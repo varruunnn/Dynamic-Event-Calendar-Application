@@ -1,113 +1,223 @@
-import { useState, useEffect } from "react";
-import Grid from "./components/Grid";
-import Event from "./components/Event";
-import EventListPanel from "./components/EventListPanel";
-import { formatDate, isOverlapping } from "./utils/dateUtils";
-import ThemeToggle from "./components/ThemeToggle";
+import React, { useState, useEffect } from 'react';
+import { startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, format } from 'date-fns';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import CalendarHeader from './components/CalendarHeader';
+import SearchBar from './components/SearchBar';
+import CalendarDay from './components/CalendarDay';
+import EventModal from './components/EventModal';
+
+const ItemType = {
+  EVENT: 'event',
+};
 
 const App = () => {
-  const [month, setMonth] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [events, setEvents] = useState([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(
-    localStorage.getItem("theme") === "dark"
-  );
-
+  const [events, setEvents] = useState(() => JSON.parse(localStorage.getItem('calendarEvents')) || {});
+  const [eventForm, setEventForm] = useState({ 
+    name: '', 
+    startTime: '', 
+    endTime: '', 
+    description: '',
+    category: 'others'
+  });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   useEffect(() => {
-    const storedEvents = JSON.parse(localStorage.getItem("events")) || [];
-    setEvents(storedEvents);
-  }, []);
-
-  useEffect(() => {
-    if (events.length > 0) {
-      localStorage.setItem("events", JSON.stringify(events));
-    }
+    localStorage.setItem('calendarEvents', JSON.stringify(events));
   }, [events]);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode);
-    localStorage.setItem("theme", isDarkMode ? "dark" : "light");
-  }, [isDarkMode]);
-  const toggleTheme = () => {
-    setIsDarkMode((prev) => !prev);
+  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+
+  const handleDateClick = (date) => {
+    setSelectedDate(date);
+    setIsModalOpen(true);
   };
 
-  const handleAddEditEvent = (event) => {
-    if (editingEvent) {
-      setEvents((prev) =>
-        prev.map((e) => (e === editingEvent ? { ...editingEvent, ...event } : e))
-      );
-    } else {
-      if (isOverlapping(event, events)) {
-        alert("Events cannot overlap!");
-        return;
-      }
-      setEvents((prev) => [...prev, { ...event, date: formatDate(selectedDate) }]);
+  const handleAddEvent = (e) => {
+    e.preventDefault();
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    setEvents({
+      ...events,
+      [dateStr]: [...(events[dateStr] || []), { id: Date.now(), ...eventForm }],
+    });
+    setEventForm({ name: '', startTime: '', endTime: '', description: '' });
+    setIsModalOpen(false);
+  };
+
+  const handleDeleteEvent = (eventId) => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    setEvents({
+      ...events,
+      [dateStr]: events[dateStr].filter(event => event.id !== eventId),
+    });
+  };
+
+  // const handleEventDrop = (event, newDate) => {
+  //   const dateStr = format(newDate, 'yyyy-MM-dd');
+  //   setEvents((prevEvents) => {
+  //     const updatedEvents = { ...prevEvents };
+  //     const oldDateStr = format(new Date(event.date), 'yyyy-MM-dd');
+  //     updatedEvents[oldDateStr] = updatedEvents[oldDateStr].filter(e => e.id !== event.id);
+  //     updatedEvents[dateStr] = [...(updatedEvents[dateStr] || []), { ...event, date: dateStr }];
+  //     return updatedEvents;
+  //   });
+  // };
+
+  const filteredEvents = (dateStr) => {
+    const dayEvents = events[dateStr] || [];
+    return searchTerm
+      ? dayEvents.filter(event =>
+          event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          event.description.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : dayEvents;
+  };
+
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const handleReorderEvents = (reorderedEvents) => {
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    setEvents(prevEvents => ({
+      ...prevEvents,
+      [dateStr]: reorderedEvents,
+    }));
+  };
+  // const drop = (event, targetDay) => {
+  //   const sourceDateStr = format(new Date(event.date), 'yyyy-MM-dd');
+  //   const targetDateStr = format(targetDay, 'yyyy-MM-dd');
+  //   if (sourceDateStr === targetDateStr) return;
+  //   const targetDayEvents = events[targetDateStr] || [];
+  //   const hasTimeConflict = targetDayEvents.some(existingEvent => {
+  //     const eventStart = new Date(`${targetDateStr}T${event.startTime}`);
+  //     const eventEnd = new Date(`${targetDateStr}T${event.endTime}`);
+  //     const existingStart = new Date(`${targetDateStr}T${existingEvent.startTime}`);
+  //     const existingEnd = new Date(`${targetDateStr}T${existingEvent.endTime}`);
+
+  //     return (
+  //       (eventStart >= existingStart && eventStart < existingEnd) ||
+  //       (eventEnd > existingStart && eventEnd <= existingEnd) ||
+  //       (eventStart <= existingStart && eventEnd >= existingEnd)
+  //     );
+  //   });
+  
+  //   if (hasTimeConflict) {
+  //     alert('Cannot move event due to time conflict with existing events');
+  //     return;
+  //   }
+  //   setEvents(prevEvents => {
+  //     const updatedEvents = { ...prevEvents };
+  //     updatedEvents[sourceDateStr] = (updatedEvents[sourceDateStr] || [])
+  //       .filter(e => e.id !== event.id);
+  //     const updatedEvent = {
+  //       ...event,
+  //       date: targetDateStr,
+  //     };
+  //     updatedEvents[targetDateStr] = [
+  //       ...(updatedEvents[targetDateStr] || []),
+  //       updatedEvent,
+  //     ];
+  //     return updatedEvents;
+  //   });
+  // };
+  
+  const handleExport = (type) => {
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(currentDate);
+    const monthEvents = Object.keys(events)
+      .filter((date) => {
+        const eventDate = new Date(date);
+        return eventDate >= monthStart && eventDate <= monthEnd;
+      })
+      .reduce((acc, date) => {
+        acc[date] = events[date];
+        return acc;
+      }, {});
+  
+    if (type === 'json') {
+      const jsonString = JSON.stringify(monthEvents, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `events-${format(currentDate, 'yyyy-MM')}.json`;
+      link.click();
+    } else if (type === 'csv') {
+      const csvData = [];
+      csvData.push(['Date', 'Event Name', 'Description', 'Category']);
+  
+      Object.entries(monthEvents).forEach(([date, dayEvents]) => {
+        dayEvents.forEach((event) => {
+          csvData.push([date, event.name, event.description, event.category]);
+        });
+      });
+  
+      const csvString = csvData
+        .map((row) => row.map((item) => `"${item}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csvString], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `events-${format(currentDate, 'yyyy-MM')}.csv`;
+      link.click();
     }
-    setEditingEvent(null);
   };
-
-  const handleDeleteEvent = (event) => {
-    setEvents((prev) => prev.filter((e) => e !== event));
-  };
-
-  const dailyEvents = events.filter(
-    (event) => event.date === formatDate(selectedDate)
-  );
 
   return (
-    <div
-      className={`app min-h-screen flex flex-col items-center p-8 transition-all ${
-        isDarkMode ? "bg-gray-900 text-white" : "bg-gray-100 text-black"
-      }`}
-    >
-      <div className="w-full max-w-5xl bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold dark:text-white">Event Calendar</h1>
-          <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+    <DndProvider backend={HTML5Backend}>
+      <div className="max-w-4xl mx-auto p-4">
+        <CalendarHeader
+          currentDate={currentDate}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+        />
+        <div className="flex justify-end my-4">
+          <button
+            className="bg-blue-500 text-white px-4 py-2 rounded"
+            onClick={() => handleExport('json')}
+          >
+            Export as JSON
+          </button>
+          <button
+            className="bg-green-500 text-white px-4 py-2 rounded ml-2"
+            onClick={() => handleExport('csv')}
+          >
+            Export as CSV
+          </button>
         </div>
-
-        <Grid
-          month={month}
-          setMonth={setMonth}
-          setSelectedDate={setSelectedDate}
-          selectedDate={selectedDate}
+        <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+        <div className="grid grid-cols-7 gap-1">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="p-2 text-center font-bold">{day}</div>
+          ))}
+          {calendarDays.map(day => (
+            <CalendarDay
+              key={day}
+              day={day}
+              currentDate={currentDate}
+              selectedDate={selectedDate}
+              onDateClick={handleDateClick}
+              events={filteredEvents(format(day, 'yyyy-MM-dd'))}
+              // onEventDrop={drop}
+            />
+          ))}
+        </div>
+        <EventModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          selectedDate={format(selectedDate, 'MMMM dd, yyyy')}
+          eventForm={eventForm}
+          onFormChange={setEventForm}
+          onSubmit={handleAddEvent}
+          events={filteredEvents(format(selectedDate, 'yyyy-MM-dd'))}
+          onDeleteEvent={handleDeleteEvent}
+          onReorderEvents={handleReorderEvents}
         />
       </div>
-
-      <div className="w-full max-w-5xl bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
-        <EventListPanel
-          events={dailyEvents}
-          onEdit={(event) => {
-            setEditingEvent(event);
-            setModalOpen(true);
-          }}
-          onDelete={handleDeleteEvent}
-        />
-      </div>
-
-      <button
-        onClick={() => setModalOpen(true)}
-        className="px-4 py-2 bg-indigo-600 dark:bg-indigo-700 text-white rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-800 transition-all mb-6"
-      >
-        Add Event
-      </button>
-
-      <Event
-        isOpen={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingEvent(null);
-        }}
-        onSave={handleAddEditEvent}
-        selectedDate={selectedDate}
-        existingEvent={editingEvent}
-      />
-    </div>
+    </DndProvider>
   );
 };
 
 export default App;
-
