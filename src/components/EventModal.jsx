@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export const categoryConfig = {
   work: {
@@ -31,6 +32,23 @@ export const categoryConfig = {
     selectClass: "text-yellow-500",
   },
 };
+
+// Helper function to convert time string to minutes since midnight
+const timeToMinutes = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+// Check if two time ranges overlap
+const isOverlapping = (start1, end1, start2, end2) => {
+  const start1Mins = timeToMinutes(start1);
+  const end1Mins = timeToMinutes(end1);
+  const start2Mins = timeToMinutes(start2);
+  const end2Mins = timeToMinutes(end2);
+  
+  return start1Mins < end2Mins && end1Mins > start2Mins;
+};
+
 const DraggableEventItem = ({ event, index, moveEvent, onDeleteEvent }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'EVENT_REORDER',
@@ -94,6 +112,8 @@ const EventModal = ({
   onDeleteEvent,
   onReorderEvents,
 }) => {
+  const [validationError, setValidationError] = React.useState('');
+
   const moveEvent = (dragIndex, hoverIndex) => {
     const reorderedEvents = [...events];
     const draggedEvent = reorderedEvents[dragIndex];
@@ -102,13 +122,52 @@ const EventModal = ({
     onReorderEvents(reorderedEvents);
   };
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Check if end time is after start time
+    if (timeToMinutes(eventForm.endTime) <= timeToMinutes(eventForm.startTime)) {
+      setValidationError('End time must be after start time');
+      return;
+    }
+
+    // Check for overlaps with existing events
+    const hasOverlap = events.some(existingEvent => 
+      isOverlapping(
+        eventForm.startTime,
+        eventForm.endTime,
+        existingEvent.startTime,
+        existingEvent.endTime
+      )
+    );
+
+    if (hasOverlap) {
+      setValidationError('This event overlaps with an existing event');
+      return;
+    }
+
+    setValidationError('');
+    onSubmit(e);
+  };
+
+  // Clear validation error when form changes
+  React.useEffect(() => {
+    setValidationError('');
+  }, [eventForm]);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader className="sticky top-0 bg-white pb-4 z-10">
           <DialogTitle>{selectedDate}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          )}
+          
           <div>
             <Label htmlFor="eventName">Event Name</Label>
             <Input
