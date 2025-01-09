@@ -33,13 +33,11 @@ export const categoryConfig = {
   },
 };
 
-// Helper function to convert time string to minutes since midnight
 const timeToMinutes = (timeStr) => {
   const [hours, minutes] = timeStr.split(':').map(Number);
   return hours * 60 + minutes;
 };
 
-// Check if two time ranges overlap
 const isOverlapping = (start1, end1, start2, end2) => {
   const start1Mins = timeToMinutes(start1);
   const end1Mins = timeToMinutes(end1);
@@ -125,13 +123,10 @@ const EventModal = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // Check if end time is after start time
     if (timeToMinutes(eventForm.endTime) <= timeToMinutes(eventForm.startTime)) {
       setValidationError('End time must be after start time');
       return;
     }
-
-    // Check for overlaps with existing events
     const hasOverlap = events.some(existingEvent => 
       isOverlapping(
         eventForm.startTime,
@@ -149,8 +144,6 @@ const EventModal = ({
     setValidationError('');
     onSubmit(e);
   };
-
-  // Clear validation error when form changes
   React.useEffect(() => {
     setValidationError('');
   }, [eventForm]);
